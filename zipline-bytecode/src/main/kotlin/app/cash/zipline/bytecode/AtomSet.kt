@@ -22,8 +22,9 @@ package app.cash.zipline.bytecode
  * When encoding an object, built-in strings are not encoded.
  */
 class AtomSet(
-  val strings: List<String>
+  strings: List<String>
 ) {
+  val strings = strings.toMutableList()
   private val stringToIndex = mutableMapOf<String, Int>()
 
   init {
@@ -45,6 +46,17 @@ class AtomSet(
   fun indexOf(value: String): Int {
     val result = stringToIndex[value]
     return result ?: throw IllegalArgumentException("not an atom: $value")
+  }
+
+  fun indexOfOrCreate(string: String): Int {
+    val result = stringToIndex[string]
+    if (result != null) return result
+
+
+    val newIndex = BUILT_IN_ATOMS.size + strings.size
+    strings += string
+    stringToIndex[string] = newIndex
+    return newIndex
   }
 }
 

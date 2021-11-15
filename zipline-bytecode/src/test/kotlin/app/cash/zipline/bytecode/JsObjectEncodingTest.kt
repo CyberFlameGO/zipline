@@ -50,6 +50,61 @@ class JsObjectEncodingTest {
     assertThat(greetFunction.debug?.lineNumber).isEqualTo(1)
   }
 
+  @Test fun sampleForEgor() {
+    // Use QuickJS to compile a script into bytecode.
+    val bytecode: ByteArray = quickJs.compile(
+      """
+      |function greet() {
+      |  throw Error("boom");
+      |}
+      """.trimMargin(),
+      "hello.js"
+    )
+
+    val reader = JsObjectReader(bytecode)
+    val evalFunction = reader.use {
+      reader.readJsObject()
+    } as JsFunctionBytecode
+
+    assertThat(evalFunction.name).isEqualTo("<eval>")
+    assertThat(evalFunction.debug?.fileName).isEqualTo("hello.js")
+    assertThat(evalFunction.debug?.lineNumber).isEqualTo(1)
+
+    val greetFunction = evalFunction.constantPool.single() as JsFunctionBytecode
+
+    val lineNumberBuffer = Buffer()
+    val debug = greetFunction.debug!!
+    val lineNumberWriter = LineNumberWriter(debug.lineNumber, lineNumberBuffer)
+    val lineNumberReader = LineNumberReader(
+      debug.lineNumber, Buffer().write(debug.pc2Line)
+    )
+    while (lineNumberReader.next()) {
+      lineNumberWriter.next(lineNumberReader.pc, 567)
+    }
+    val newPc2Line = lineNumberBuffer.readByteString()
+    val fileName = "helloEgor.kt"
+
+    val atoms = reader.atoms
+    atoms.indexOfOrCreate(fileName)
+
+    val newGreetFunction = greetFunction.copy(
+      debug = debug.copy(
+        fileName = fileName,
+        pc2Line = newPc2Line
+      )
+    )
+    val newEvalFunction = evalFunction.copy(constantPool = listOf(newGreetFunction))
+
+    val newBytecodeBuffer = Buffer()
+    JsObjectWriter(atoms, newBytecodeBuffer).use { writer ->
+      writer.writeJsObject(newEvalFunction)
+    }
+
+    val quickJs2 = QuickJs.create()
+    quickJs2.execute(newBytecodeBuffer.readByteArray())
+    val greet = quickJs2.evaluate("greet()")
+  }
+
   @Test fun primitiveValues() {
     assertRoundTrip(
       """
